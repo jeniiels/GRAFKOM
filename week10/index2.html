@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Raytracer Demo - Phong Lighting</title>
+    <style>
+      body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #333; }
+      canvas { border: 1px solid #555; display: block; background-color: black; }
+    </style>
+</head>
+<body>
+    <canvas id="raytraceCanvas" width="500" height="500"></canvas>
+
+    <!-- Embed helper functions -->
+    <script>
+      // --- Vector Helper Functions ---
+      function createVector(x = 0, y = 0, z = 0) { return { x: x, y: y, z: z }; }
+      function addVectors(v1, v2) { return { x: v1.x + v2.x, y: v1.y + v2.y, z: v1.z + v2.z }; }
+      function subtractVectors(v1, v2) { return { x: v1.x - v2.x, y: v1.y - v2.y, z: v1.z - v2.z }; }
+      function multiplyVectorByScalar(v, s) { return { x: v.x * s, y: v.y * s, z: v.z * s }; }
+      function dotVectors(v1, v2) { return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z; }
+      function vectorLengthSq(v) { return v.x * v.x + v.y * v.y + v.z * v.z; }
+      function vectorLength(v) { return Math.sqrt(vectorLengthSq(v)); }
+      function normalizeVector(v) {
+        const len = vectorLength(v);
+        if (len === 0) return createVector(0, 0, 0);
+        return multiplyVectorByScalar(v, 1 / len);
+      }
+      // Menghitung vektor refleksi R = I - 2 * dot(I, N) * N
+      // I: Vektor datang (incident), N: Vektor normal (harus normalized)
+      function reflectVector(incident, normal) {
+          const dotIN = dotVectors(incident, normal);
+          const term2 = multiplyVectorByScalar(normal, 2 * dotIN);
+          return subtractVectors(incident, term2);
+      }
+
+      // --- Color Helper Functions (nilai 0-1) ---
+      function createColor(r = 0, g = 0, b = 0) { return { r: r, g: g, b: b }; }
+      // Komponen-wise multiplication (Hadamard product)
+      function multiplyColors(c1, c2) { return { r: c1.r * c2.r, g: c1.g * c2.g, b: c1.b * c2.b }; }
+      function multiplyColorByScalar(c, s) { return { r: c.r * s, g: c.g * s, b: c.b * s }; }
+      function addColors(c1, c2) { return { r: c1.r + c2.r, g: c1.g + c2.g, b: c1.b + c2.b }; }
+      // Clamp color values to [0, 1]
+      function clampColor(c) {
+          return {
+              r: Math.max(0, Math.min(1, c.r)),
+              g: Math.max(0, Math.min(1, c.g)),
+              b: Math.max(0, Math.min(1, c.b))
+          };
+      }
+      // Convert color [0,1] to RGBA array [0,255]
+      function colorToRGBA(c) {
+          return [
+              Math.floor(c.r * 255),
+              Math.floor(c.g * 255),
+              Math.floor(c.b * 255),
+              255 // Alpha
+          ];
+      }
+
+      // --- End Helper Functions ---
+    </script>
+
+    <!-- Skrip Raytracer Utama -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const canvas = document.getElementById("raytraceCanvas");
+        if (!canvas.getContext) { console.error("Canvas 2D context not supported."); return; }
+        const ctx = canvas.getContext("2d");
+
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const aspectRatio = canvasWidth / canvasHeight;
+
+        // --- Scene Setup ---
+        const cameraOrigin = createVector(0, 0, 5);
+        const backgroundColor = createColor(0, 0, 0); // Hitam
+
+        // --- Lighting Setup ---
+        // Cahaya ambient global
+        const ambientLight = { color: createColor(1, 1, 1), intensity: 0.2 };
+
+        // Sumber cahaya titik (point light)
+        const pointLight = {
+            position: createVector(5, 5, 5), // Posisi sumber cahaya
+            color: createColor(1, 1, 1),     // Warna cahaya (putih)
+            intensity: 0.8                   // Intensitas cahaya (digunakan untuk diffuse/specular)
+        };
+
+        // --- Scene Objects with Material Properties ---
+        const sceneObjects = [
+          {
+            type: 'sphere',
+            center: createVector(-0.4, 0, -1),
+            radius: 1.0,
+            material: {
+                color: createColor(0, 0, 1), // Biru
+                ambient: 0.2,   // Seberapa banyak cahaya ambient dipantulkan
+                diffuse: 0.7,   // Seberapa banyak cahaya diffuse dipantulkan
+                specular: 0.5,  // Seberapa terang highlight specular
+                shininess: 32     // Seberapa fokus highlight (nilai lebih tinggi = lebih kecil/tajam)
+            }
+          },
+          {
+            type: 'sphere',
+            center: createVector(0.5, -0.5, -0.2),
+            radius: 0.6,
+            material: {
+                color: createColor(1, 0, 0), // Merah
+                ambient: 0.2,
+                diffuse: 0.8,
+                specular: 0.8,
+                shininess: 64
+            }
+          }
+        ];
+
+        // --- Intersection Functions ---
+        function intersectSphere(rayOrigin, rayDirection, sphere) {
+          // (Sama seperti sebelumnya, mengembalikan t atau Infinity)
+          const C = sphere.center;
+          const r = sphere.radius;
+          const O = rayOrigin;
+          const D = rayDirection;
+          const L = subtractVectors(O, C);
+          const a = dotVectors(D, D);
+          const b = 2 * dotVectors(L, D);
+          const c = dotVectors(L, L) - r * r;
+          const discriminant = b * b - 4 * a * c;
+          if (discriminant < 0) { return Infinity; }
+          const sqrtDiscriminant = Math.sqrt(discriminant);
+          const t0 = (-b - sqrtDiscriminant) / (2 * a);
+          const t1 = (-b + sqrtDiscriminant) / (2 * a);
+          const epsilon = 0.001;
+          if (t0 > epsilon && t1 > epsilon) { return Math.min(t0, t1); }
+          else if (t0 > epsilon) { return t0; }
+          else if (t1 > epsilon) { return t1; }
+          return Infinity;
+        }
+
+        // --- Normal Calculation ---
+        function getSphereNormal(hitPoint, sphere) {
+            // Normal bola = arah dari pusat ke titik permukaan (normalized)
+            return normalizeVector(subtractVectors(hitPoint, sphere.center));
+        }
+
+        // ======================================================
+        // --- Phong Lighting Calculation Function ---
+        // ======================================================
+        function calculatePhongLighting(hitPoint, normal, viewDirection, material, light, globalAmbient) {
+
+            let finalColor = createColor(0, 0, 0); // Mulai dari hitam
+
+            // --- 1. Ambient Component ---
+            // Warna ambient = Warna Cahaya Ambient Global * Warna Material * Intensitas Ambient Material
+            const ambientTerm = multiplyColorByScalar(
+                                    multiplyColors(globalAmbient.color, material.color),
+                                    material.ambient * globalAmbient.intensity
+                                );
+            finalColor = addColors(finalColor, ambientTerm);
+
+            // --- Perhitungan untuk Diffuse & Specular ---
+            // Vektor dari titik hit ke sumber cahaya
+            const lightDirection = normalizeVector(subtractVectors(light.position, hitPoint));
+
+            // --- 2. Diffuse Component ---
+            // Intensitas diffuse bergantung pada sudut antara normal permukaan dan arah cahaya
+            // diffuseFactor = max(0, dot(Normal, LightDirection))
+            const diffuseFactor = Math.max(0, dotVectors(normal, lightDirection));
+
+            if (diffuseFactor > 0) { // Hanya hitung jika permukaan menghadap cahaya
+                // Warna diffuse = Warna Cahaya * Warna Material * Intensitas Diffuse Material * Faktor Diffuse
+                const diffuseTerm = multiplyColorByScalar(
+                                        multiplyColors(light.color, material.color),
+                                        material.diffuse * light.intensity * diffuseFactor
+                                    );
+                finalColor = addColors(finalColor, diffuseTerm);
+
+                // --- 3. Specular Component ---
+                // Intensitas specular bergantung pada sudut antara arah pandang dan arah refleksi cahaya
+                // reflectionDirection = reflect(-lightDirection, normal)
+                const reflectionDirection = reflectVector(multiplyVectorByScalar(lightDirection, -1), normal);
+
+                // specularFactor = pow(max(0, dot(ReflectionDirection, ViewDirection)), Shininess)
+                const specularFactor = Math.pow(Math.max(0, dotVectors(reflectionDirection, viewDirection)), material.shininess);
+
+                if (specularFactor > 0) { // Hanya hitung jika ada highlight
+                    // Warna specular = Warna Cahaya * Intensitas Specular Material * Faktor Specular
+                    const specularTerm = multiplyColorByScalar(
+                                            light.color, // Highlight biasanya berwarna sama dengan cahaya
+                                            material.specular * light.intensity * specularFactor
+                                        );
+                    finalColor = addColors(finalColor, specularTerm);
+                }
+            }
+
+            // Clamp hasil akhir ke [0, 1] untuk menghindari warna > 1
+            return clampColor(finalColor);
+        }
+        // --- End Phong Lighting Calculation ---
+
+
+        // --- Raytracing Loop ---
+        console.log("Starting raytracing with Phong lighting...");
+        console.time("Raytracing Time");
+
+        const imageData = ctx.createImageData(canvasWidth, canvasHeight);
+        const data = imageData.data;
+
+        for (let y = 0; y < canvasHeight; y++) {
+          for (let x = 0; x < canvasWidth; x++) {
+            // Ray Generation
+            const u = (x + 0.5) / canvasWidth;
+            const v = (y + 0.5) / canvasHeight;
+            const screenX = (2 * u - 1) * aspectRatio;
+            const screenY = 1 - 2 * v;
+            const pointOnImagePlane = createVector(screenX, screenY, 0);
+            const rayOrigin = cameraOrigin;
+            const rayDirection = normalizeVector(subtractVectors(pointOnImagePlane, rayOrigin));
+
+            // Find Closest Intersection
+            let closest_t = Infinity;
+            let hitObject = null;
+            for (const object of sceneObjects) {
+              let current_t = Infinity;
+              if (object.type === 'sphere') {
+                current_t = intersectSphere(rayOrigin, rayDirection, object);
+              }
+              if (current_t < closest_t) {
+                closest_t = current_t;
+                hitObject = object;
+              }
+            }
+
+            // --- Coloring ---
+            const pixelIndex = (y * canvasWidth + x) * 4;
+            let finalPixelColor; // Warna dalam format {r, g, b} [0,1]
+
+            if (hitObject) {
+              // Ada intersection, hitung pencahayaan Phong
+              // 1. Hitung titik intersection di world space
+              const hitPoint = addVectors(rayOrigin, multiplyVectorByScalar(rayDirection, closest_t));
+              // 2. Hitung normal permukaan di titik intersection
+              let normal;
+              if (hitObject.type === 'sphere') {
+                  normal = getSphereNormal(hitPoint, hitObject);
+              } // else if (type lain...)
+              // 3. Hitung arah pandang (dari titik hit ke kamera)
+              const viewDirection = normalizeVector(subtractVectors(cameraOrigin, hitPoint));
+
+              // 4. Panggil fungsi kalkulasi Phong
+              finalPixelColor = calculatePhongLighting(
+                  hitPoint,
+                  normal,
+                  viewDirection,
+                  hitObject.material,
+                  pointLight, // Gunakan point light yang sudah didefinisikan
+                  ambientLight  // Gunakan ambient light global
+              );
+
+            } else {
+              // Tidak ada intersection, gunakan warna background
+              finalPixelColor = backgroundColor;
+            }
+
+            // Konversi warna akhir {r,g,b} [0,1] ke array RGBA [0,255]
+            const rgbaColor = colorToRGBA(finalPixelColor);
+
+            // Set warna ke ImageData
+            data[pixelIndex]     = rgbaColor[0]; // R
+            data[pixelIndex + 1] = rgbaColor[1]; // G
+            data[pixelIndex + 2] = rgbaColor[2]; // B
+            data[pixelIndex + 3] = rgbaColor[3]; // A
+
+          } // Akhir loop x
+        } // Akhir loop y
+
+        ctx.putImageData(imageData, 0, 0);
+        console.timeEnd("Raytracing Time");
+        console.log("Raytracing selesai.");
+      });
+    </script>
+  </body>
+</html>
