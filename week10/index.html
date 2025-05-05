@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Judul diperbarui -->
+    <title>Raytracer Demo - Two Overlapping Spheres</title>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background-color: #333;
+      }
+      canvas {
+        border: 1px solid #555;
+        display: block;
+        background-color: black;
+      }
+    </style>
+</head>
+<body>
+    <canvas id="raytraceCanvas" width="500" height="500"></canvas>
+
+    <!-- Embed helper functions (Tidak berubah) -->
+    <script>
+      // --- Vector Helper Functions ---
+      function createVector(x = 0, y = 0, z = 0) { return { x: x, y: y, z: z }; }
+      function addVectors(v1, v2) { return { x: v1.x + v2.x, y: v1.y + v2.y, z: v1.z + v2.z }; }
+      function subtractVectors(v1, v2) { return { x: v1.x - v2.x, y: v1.y - v2.y, z: v1.z - v2.z }; }
+      function multiplyVectorByScalar(v, s) { return { x: v.x * s, y: v.y * s, z: v.z * s }; }
+      function dotVectors(v1, v2) { return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z; }
+      function vectorLengthSq(v) { return v.x * v.x + v.y * v.y + v.z * v.z; }
+      function vectorLength(v) { return Math.sqrt(vectorLengthSq(v)); }
+      function normalizeVector(v) {
+        const len = vectorLength(v);
+        if (len === 0) return createVector(0, 0, 0);
+        return multiplyVectorByScalar(v, 1 / len);
+      }
+      // --- End Vector Helper Functions ---
+    </script>
+
+    <!-- Skrip Raytracer Utama -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const canvas = document.getElementById("raytraceCanvas");
+        if (!canvas.getContext) {
+          console.error("Canvas 2D context not supported.");
+          return;
+        }
+        const ctx = canvas.getContext("2d");
+
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const aspectRatio = canvasWidth / canvasHeight;
+
+        // --- Scene Setup ---
+        const cameraOrigin = createVector(0, 0, 5);
+        const backgroundColor = "black";
+
+        // --- MODIFIKASI DI SINI: Tambahkan bola kedua ---
+        const sceneObjects = [
+          {
+            type: 'sphere',
+            center: createVector(0, 0, -1), // Bola Biru (sedikit lebih jauh)
+            radius: 1.0,
+            color: 'blue'
+          },
+          { // Bola Kedua (Merah)
+            type: 'sphere',
+            // Geser sedikit ke kanan (X) dan sedikit lebih dekat (Z)
+            center: createVector(0.5, 0, -0.2),
+            radius: 1.0, // Buat sedikit lebih kecil agar menarik
+            color: 'red'
+          }
+          // Tambahkan objek lain di sini jika perlu
+        ];
+        // --- AKHIR MODIFIKASI ---
+
+        // --- Intersection Functions (Tidak berubah) ---
+        function intersectSphere(rayOrigin, rayDirection, sphere) {
+          const C = sphere.center;
+          const r = sphere.radius;
+          const O = rayOrigin;
+          const D = rayDirection;
+          const L = subtractVectors(O, C);
+          const a = dotVectors(D, D);
+          const b = 2 * dotVectors(L, D);
+          const c = dotVectors(L, L) - r * r;
+          const discriminant = b * b - 4 * a * c;
+
+          if (discriminant < 0) { return Infinity; }
+
+          const sqrtDiscriminant = Math.sqrt(discriminant);
+          const t0 = (-b - sqrtDiscriminant) / (2 * a);
+          const t1 = (-b + sqrtDiscriminant) / (2 * a);
+
+          const epsilon = 0.001;
+          if (t0 > epsilon && t1 > epsilon) { return Math.min(t0, t1); }
+          else if (t0 > epsilon) { return t0; }
+          else if (t1 > epsilon) { return t1; }
+          return Infinity;
+        }
+
+        // --- Raytracing Loop (Tidak berubah) ---
+        console.log("Starting raytracing...");
+        console.time("Raytracing Time");
+
+        const imageData = ctx.createImageData(canvasWidth, canvasHeight);
+        const data = imageData.data;
+
+        for (let y = 0; y < canvasHeight; y++) {
+          for (let x = 0; x < canvasWidth; x++) {
+            // Ray Generation
+            const u = (x + 0.5) / canvasWidth;
+            const v = (y + 0.5) / canvasHeight;
+            const screenX = (2 * u - 1) * aspectRatio;
+            const screenY = 1 - 2 * v;
+            const pointOnImagePlane = createVector(screenX, screenY, 0);
+            const rayOrigin = cameraOrigin;
+            const rayDirection = normalizeVector(subtractVectors(pointOnImagePlane, rayOrigin));
+
+            // Find Closest Intersection
+            let closest_t = Infinity;
+            let hitObject = null;
+            for (const object of sceneObjects) {
+              let current_t = Infinity;
+              if (object.type === 'sphere') {
+                current_t = intersectSphere(rayOrigin, rayDirection, object);
+              }
+              // else if (object.type === 'plane') { /* ... */ }
+
+              if (current_t < closest_t) {
+                closest_t = current_t;
+                hitObject = object;
+              }
+            }
+
+            // Coloring
+            const pixelIndex = (y * canvasWidth + x) * 4;
+            let finalColor;
+
+            if (hitObject) {
+              const objectColor = hitObject.color.toLowerCase();
+              let r=0, g=0, b=0;
+              // --- Tambahkan 'red' ke konversi warna ---
+              if (objectColor === 'blue') { r=0; g=0; b=255; }
+              else if (objectColor === 'red') { r=255; g=0; b=0; } // <-- Ditambahkan
+              else if (objectColor === 'green') { r=0; g=255; b=0; }
+              else if (objectColor === 'white') { r=255; g=255; b=255; }
+              else { r=128; g=128; b=128; }
+              finalColor = [r, g, b, 255];
+            } else {
+              finalColor = [0, 0, 0, 255]; // Hitam
+            }
+
+            data[pixelIndex]     = finalColor[0];
+            data[pixelIndex + 1] = finalColor[1];
+            data[pixelIndex + 2] = finalColor[2];
+            data[pixelIndex + 3] = finalColor[3];
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        console.timeEnd("Raytracing Time");
+        console.log("Raytracing selesai.");
+      });
+    </script>
+  </body>
+</html>
