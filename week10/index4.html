@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Raytracer Demo - Phong Lighting with Shadows</title>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #ffffff; }
+        canvas { border: 1px solid #555; display: block; background-color: black; }
+    </style>
+</head>
+<body>
+    <canvas id="raytraceCanvas" width="500" height="500"></canvas>
+
+    <!-- Embed helper functions (Tidak berubah) -->
+    <script>
+        // --- Vector Helper Functions ---
+        function createVector(x = 0, y = 0, z = 0) { return { x: x, y: y, z: z }; }
+        function addVectors(v1, v2) { return { x: v1.x + v2.x, y: v1.y + v2.y, z: v1.z + v2.z }; }
+        function subtractVectors(v1, v2) { return { x: v1.x - v2.x, y: v1.y - v2.y, z: v1.z - v2.z }; }
+        function multiplyVectorByScalar(v, s) { return { x: v.x * s, y: v.y * s, z: v.z * s }; }
+        function dotVectors(v1, v2) { return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z; }
+        function vectorLengthSq(v) { return v.x * v.x + v.y * v.y + v.z * v.z; }
+        function vectorLength(v) { return Math.sqrt(vectorLengthSq(v)); }
+        function normalizeVector(v) {
+            const len = vectorLength(v);
+            if (len === 0) return createVector(0, 0, 0);
+            return multiplyVectorByScalar(v, 1 / len);
+        }
+        function reflectVector(incident, normal) {
+            const dotIN = dotVectors(incident, normal);
+            const term2 = multiplyVectorByScalar(normal, 2 * dotIN);
+            return subtractVectors(incident, term2);
+        }
+
+        // --- Color Helper Functions (nilai 0-1) ---
+        function createColor(r = 0, g = 0, b = 0) { return { r: r, g: g, b: b }; }
+        function multiplyColors(c1, c2) { return { r: c1.r * c2.r, g: c1.g * c2.g, b: c1.b * c2.b }; }
+        function multiplyColorByScalar(c, s) { return { r: c.r * s, g: c.g * s, b: c.b * s }; }
+        function addColors(c1, c2) { return { r: c1.r + c2.r, g: c1.g + c2.g, b: c1.b + c2.b }; }
+        function clampColor(c) {
+            return {
+                r: Math.max(0, Math.min(1, c.r)),
+                g: Math.max(0, Math.min(1, c.g)),
+                b: Math.max(0, Math.min(1, c.b))
+            };
+        }
+        function colorToRGBA(c) {
+            return [
+                Math.floor(c.r * 255),
+                Math.floor(c.g * 255),
+                Math.floor(c.b * 255),
+                255 // Alpha
+            ];
+        }
+        // --- End Helper Functions ---
+        </script>
+
+        <!-- Skrip Raytracer Utama -->
+        <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const canvas = document.getElementById("raytraceCanvas");
+            if (!canvas.getContext) { console.error("Canvas 2D context not supported."); return; }
+            const ctx = canvas.getContext("2d");
+
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const aspectRatio = canvasWidth / canvasHeight;
+
+            // --- Scene Setup ---
+            const cameraOrigin = createVector(0, 0.5, 6); // Sedikit naik dan mundur
+            const backgroundColor = createColor(0.05, 0.05, 0.1); // Background gelap
+
+            // --- Lighting Setup ---
+            const ambientLight = { color: createColor(1, 1, 1), intensity: 0.15 };
+            const pointLight = {
+                position: createVector(4, 4, 4), // Posisi sumber cahaya
+                color: createColor(1, 1, 1),
+                intensity: 0.85
+            };
+
+            // --- Scene Objects with Material Properties ---
+            const Y_FLOOR = -0.8; // Naikkan lantai sedikit
+
+            const sceneObjects = [
+            { // LANTAI
+                type: 'plane',
+                point: createVector(0, Y_FLOOR, 0),
+                normal: createVector(0, 1, 0),
+                material: {
+                    color: createColor(0.6, 0.6, 0.6), // Warna lantai abu-abu agar bayangan kontras
+                    ambient: 0.4,
+                    diffuse: 0.7,
+                    specular: 0.05,
+                    shininess: 10
+                }
+            },
+            { // Bola Biru - disesuaikan agar di atas lantai
+                type: 'sphere',
+                center: createVector(-0.2, Y_FLOOR + 0.6, -1),
+                radius: 0.6,
+                material: {
+                    color: createColor(0, 0, 1),
+                    ambient: 0.2,
+                    diffuse: 0.7,
+                    specular: 0.5,
+                    shininess: 32
+                }
+            },
+            { // Bola Merah - disesuaikan agar di atas lantai
+                type: 'sphere',
+                center: createVector(0.5, Y_FLOOR + 0.2, -0.2),
+                radius: 0.2,
+                material: {
+                    color: createColor(1, 0, 0),
+                    ambient: 0.2,
+                    diffuse: 0.8,
+                    specular: 0.8,
+                    shininess: 64
+                }
+            }
+            ];
+
+            // --- Intersection Functions (Tidak berubah) ---
+            function intersectSphere(rayOrigin, rayDirection, sphere) {
+                const C = sphere.center; const r = sphere.radius; const O = rayOrigin; const D = rayDirection;
+                const L = subtractVectors(O, C); const a = dotVectors(D, D); const b = 2 * dotVectors(L, D);
+                const c = dotVectors(L, L) - r * r; const discriminant = b * b - 4 * a * c;
+                if (discriminant < 0) { return Infinity; }
+                const sqrtDiscriminant = Math.sqrt(discriminant);
+                const t0 = (-b - sqrtDiscriminant) / (2 * a); const t1 = (-b + sqrtDiscriminant) / (2 * a);
+                const epsilon = 0.0001;
+                if (t0 > epsilon && t1 > epsilon) { return Math.min(t0, t1); }
+                else if (t0 > epsilon) { return t0; } else if (t1 > epsilon) { return t1; }
+                return Infinity;
+            }
+            function intersectPlane(rayOrigin, rayDirection, plane) {
+                const epsilon = 0.0001; const normal = plane.normal;
+                const denominator = dotVectors(rayDirection, normal);
+                if (Math.abs(denominator) < epsilon) { return Infinity; }
+                const pointOnPlane = plane.point;
+                const t = dotVectors(subtractVectors(pointOnPlane, rayOrigin), normal) / denominator;
+                if (t > epsilon) { return t; } return Infinity;
+            }
+
+            // --- Normal Calculation (Tidak berubah) ---
+            function getSphereNormal(hitPoint, sphere) { return normalizeVector(subtractVectors(hitPoint, sphere.center)); }
+            function getPlaneNormal(hitPoint, plane) { return plane.normal; }
+
+
+            // ======================================================
+            // --- Shadow Calculation Helper Function ---
+            // ======================================================
+            /**
+             * Memeriksa apakah sebuah titik berada dalam bayangan dari sumber cahaya tertentu.
+             * @param {Vector} hitPoint Titik pada permukaan objek.
+             * @param {Vector} surfaceNormal Normal permukaan di hitPoint.
+             * @param {Object} lightSource Sumber cahaya yang diuji.
+             * @param {Array} allSceneObjects Semua objek dalam scene untuk diuji terhadap shadow ray.
+             * @param {Object} objectHitByPrimaryRay Objek asli yang terkena primary ray (untuk diabaikan dalam tes shadow).
+             * @returns {boolean} True jika dalam bayangan, false jika tidak.
+             */
+            function isInShadow(hitPoint, surfaceNormal, lightSource, allSceneObjects, objectHitByPrimaryRay) {
+                const SHADOW_EPSILON_ORIGIN = 0.001; // Untuk menggeser origin shadow ray
+                const SHADOW_EPSILON_INTERSECT = 0.0001; // Untuk perbandingan t pada intersection
+
+                // Geser origin shadow ray sedikit dari permukaan untuk menghindari self-shadowing
+                const shadowRayOrigin = addVectors(hitPoint, multiplyVectorByScalar(surfaceNormal, SHADOW_EPSILON_ORIGIN));
+                // Arah shadow ray adalah dari titik ke sumber cahaya
+                const shadowRayDirection = normalizeVector(subtractVectors(lightSource.position, shadowRayOrigin));
+                // Jarak dari (origin shadow ray yang sudah digeser) ke sumber cahaya
+                const distanceToLight = vectorLength(subtractVectors(lightSource.position, shadowRayOrigin));
+
+                for (const obj of allSceneObjects) {
+                    // Opsional: Abaikan objek itu sendiri. Jika SHADOW_EPSILON_ORIGIN sudah benar, ini mungkin tidak perlu.
+                    // Namun, lebih aman untuk mengabaikannya secara eksplisit.
+                    if (obj === objectHitByPrimaryRay) {
+                        continue;
+                    }
+
+                    let tShadow = Infinity;
+                    if (obj.type === 'sphere') {
+                        tShadow = intersectSphere(shadowRayOrigin, shadowRayDirection, obj);
+                    } else if (obj.type === 'plane') {
+                        tShadow = intersectPlane(shadowRayOrigin, shadowRayDirection, obj);
+                    }
+                    // ... (intersection untuk tipe objek lain jika ada)
+
+                    // Jika shadow ray mengenai objek INI (dan bukan di belakang origin shadow ray)
+                    // DAN intersection itu berada SEBELUM sumber cahaya.
+                    if (tShadow > SHADOW_EPSILON_INTERSECT && tShadow < distanceToLight) {
+                        return true; // Titik berada dalam bayangan dari lightSource ini
+                    }
+                }
+                return false; // Tidak ada objek yang menghalangi cahaya
+            }
+
+
+            // ======================================================
+            // --- Phong Lighting Calculation Function (Dimodifikasi untuk Shadows) ---
+            // ======================================================
+            function calculatePhongLighting(hitPoint, normal, viewDirection, material, light, globalAmbient, allSceneObjects, objectHitByPrimaryRay) {
+                let finalColor = createColor(0, 0, 0);
+
+                // --- 1. Ambient Component (Selalu ditambahkan) ---
+                const ambientTerm = multiplyColorByScalar(
+                                        multiplyColors(globalAmbient.color, material.color),
+                                        material.ambient * globalAmbient.intensity
+                                    );
+                finalColor = addColors(finalColor, ambientTerm);
+
+                // --- Cek apakah titik dalam bayangan dari sumber cahaya ini ---
+                const inShadowStatus = isInShadow(hitPoint, normal, light, allSceneObjects, objectHitByPrimaryRay);
+
+                // --- Jika TIDAK dalam bayangan, tambahkan komponen Diffuse dan Specular ---
+                if (!inShadowStatus) {
+                    // Vektor dari titik hit ke sumber cahaya
+                    const lightDirection = normalizeVector(subtractVectors(light.position, hitPoint));
+
+                    // --- 2. Diffuse Component ---
+                    const diffuseFactor = Math.max(0, dotVectors(normal, lightDirection));
+                    if (diffuseFactor > 0) { // Hanya hitung jika permukaan menghadap cahaya
+                        const diffuseTerm = multiplyColorByScalar(
+                                                multiplyColors(light.color, material.color),
+                                                material.diffuse * light.intensity * diffuseFactor
+                                            );
+                        finalColor = addColors(finalColor, diffuseTerm);
+
+                        // --- 3. Specular Component ---
+                        const reflectionDirection = reflectVector(multiplyVectorByScalar(lightDirection, -1), normal);
+                        const specularFactor = Math.pow(Math.max(0, dotVectors(reflectionDirection, viewDirection)), material.shininess);
+                        if (specularFactor > 0) { // Hanya hitung jika ada highlight
+                            const specularTerm = multiplyColorByScalar(
+                                                    light.color, // Highlight biasanya berwarna sama dengan cahaya
+                                                    material.specular * light.intensity * specularFactor
+                                                );
+                            finalColor = addColors(finalColor, specularTerm);
+                        }
+                    }
+                }
+                return clampColor(finalColor);
+            }
+
+
+            // --- Raytracing Loop ---
+            console.log("Starting raytracing with shadows...");
+            console.time("Raytracing Time");
+
+            const imageData = ctx.createImageData(canvasWidth, canvasHeight);
+            const data = imageData.data;
+
+            for (let y = 0; y < canvasHeight; y++) {
+                for (let x = 0; x < canvasWidth; x++) {
+                    const u = (x + 0.5) / canvasWidth; const v = (y + 0.5) / canvasHeight;
+                    const screenX = (2 * u - 1) * aspectRatio; const screenY = 1 - 2 * v;
+                    const pointOnImagePlane = createVector(screenX, screenY, 0);
+                    const rayOrigin = cameraOrigin;
+                    const rayDirection = normalizeVector(subtractVectors(pointOnImagePlane, rayOrigin));
+
+                    let closest_t = Infinity;
+                    let hitObject = null; // Menyimpan referensi ke objek yang terkena primary ray
+
+                    for (const object of sceneObjects) {
+                        let current_t = Infinity;
+                        if (object.type === 'sphere') {
+                            current_t = intersectSphere(rayOrigin, rayDirection, object);
+                        } else if (object.type === 'plane') {
+                            current_t = intersectPlane(rayOrigin, rayDirection, object);
+                        }
+                        if (current_t < closest_t) {
+                            closest_t = current_t;
+                            hitObject = object; // Simpan objek yang kena
+                        }
+                    }
+
+                    const pixelIndex = (y * canvasWidth + x) * 4;
+                    let finalPixelColor;
+
+                    if (hitObject) {
+                        const hitPoint = addVectors(rayOrigin, multiplyVectorByScalar(rayDirection, closest_t));
+                        let normal;
+                        if (hitObject.type === 'sphere') { normal = getSphereNormal(hitPoint, hitObject); }
+                        else if (hitObject.type === 'plane') { normal = getPlaneNormal(hitPoint, hitObject); }
+
+                        const viewDirection = normalizeVector(subtractVectors(cameraOrigin, hitPoint));
+
+                        // Panggil fungsi kalkulasi Phong, sekarang dengan sceneObjects dan hitObject
+                        finalPixelColor = calculatePhongLighting(
+                            hitPoint, normal, viewDirection, hitObject.material,
+                            pointLight, // Hanya satu sumber cahaya titik untuk demo ini
+                            ambientLight,
+                            sceneObjects, // Semua objek untuk tes bayangan
+                            hitObject     // Objek yang terkena primary ray (untuk diabaikan di isInShadow)
+                        );
+
+                    } else {
+                        finalPixelColor = backgroundColor;
+                    }
+
+                    const rgbaColor = colorToRGBA(finalPixelColor);
+                    data[pixelIndex]     = rgbaColor[0]; data[pixelIndex + 1] = rgbaColor[1];
+                    data[pixelIndex + 2] = rgbaColor[2]; data[pixelIndex + 3] = rgbaColor[3];
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            console.timeEnd("Raytracing Time");
+            console.log("Raytracing selesai.");
+        });
+    </script>
+  </body>
+</html>
