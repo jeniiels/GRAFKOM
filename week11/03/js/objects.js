@@ -63,7 +63,7 @@ export function createAllObjects() {
     const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({
         map: sharedTexture,
-        roughness: 0.8, // Shininess kecil, contoh: 0.7 - 0.9 (0.0 = sangat berkilau, 1.0 = sangat kasar)
+        roughness: 0.3, // Shininess kecil, contoh: 0.7 - 0.9 (0.0 = sangat berkilau, 1.0 = sangat kasar)
         metalness: 0.1  // Sedikit metalik bisa membantu menunjukkan perbedaan roughness
     });
     objects.sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
@@ -75,7 +75,7 @@ export function createAllObjects() {
     const pyramidGeometry = new THREE.ConeGeometry(1, 1.5, 4); // Radius dasar 1, tinggi 1.5, 4 sisi
     const pyramidMaterial = new THREE.MeshStandardMaterial({
         map: sharedTexture,
-        roughness: 0.2, // Shininess besar, contoh: 0.1 - 0.3
+        roughness: 0.3, // Shininess besar, contoh: 0.1 - 0.3
         metalness: 0.1  // Sedikit metalik
     });
     objects.pyramid = new THREE.Mesh(pyramidGeometry, pyramidMaterial);
