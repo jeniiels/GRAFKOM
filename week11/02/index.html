@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Modular Cube</title>
+    <style>
+        body { margin: 0; overflow: hidden; } /* Menghilangkan margin dan scrollbar */
+        canvas { display: block; } /* Mencegah canvas memiliki ruang ekstra di bawahnya */
+    </style>
+</head>
+<body>
+    <canvas id="three-canvas"></canvas>
+
+    <!-- Import Map untuk Three.js -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+    </script>
+
+    <!-- Script utama kita -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
