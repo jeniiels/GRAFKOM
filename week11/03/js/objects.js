@@ -63,7 +63,7 @@ export function createAllObjects() {
     const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
     const sphereMaterial = new THREE.MeshStandardMaterial({
         map: sharedTexture,
-        roughness: 0.3, // Shininess kecil, contoh: 0.7 - 0.9 (0.0 = sangat berkilau, 1.0 = sangat kasar)
+        roughness: 0.2, // Shininess kecil, contoh: 0.7 - 0.9 (0.0 = sangat berkilau, 1.0 = sangat kasar)
         metalness: 0.1  // Sedikit metalik bisa membantu menunjukkan perbedaan roughness
     });
     objects.sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
