@@ -1,0 +1,37 @@
+TEMA: Letters of the Day - A 3D Word Hunt Adventure
+DESKRIPSI:
+Permainan ini merupakan jenis permainan 3D interaktif yang dikembangkan menggunakan Three.js, menampilkan sudut pandang orang ketiga (third-person point of view). Pemain memulai permainan dengan 5 nyawa (lives). Di dalam map, terdapat huruf-huruf (letters) yang membentuk nama hari sesuai dengan hari saat itu. Sebagai contoh, pada hari Senin, huruf-huruf yang tersebar dalam map adalah M, O, N, D, A, dan Y. Pemain dapat menggerakkan karakter menggunakan tombol W, A, S, dan D, serta mengarahkan pandangan dengan mouse pointer. Eksplorasi map dapat dilakukan dengan berjalan kaki atau mengendarai car. Ketika pemain melakukan interseksi dengan letter, letter tersebut akan menghilang dari map. Setelah seluruh letter berhasil dikumpulkan, pemain akan mendapatkan sebuah plant yang dapat diletakkan di map. Jika plant berhasil ditanam, pemain dinyatakan menang (win). Secara acak, akan muncul poop di sekitar posisi pemain. Jika pemain berinteraksi dengan poop yang terdapat di map, maka nyawa pemain akan berkurang satu. Apabila jumlah nyawa mencapai nol, permainan selesai dengan status kalah (lose).
+
+Bantu aku untuk menyelesaikan proyek ini agar sesuai dengan deskripsi di atas.
+Progress saat ini:
+- sudah bisa load object map dan player.
+- sudah bisa load hdr sebagai langit.
+- sudah bisa WASD dan pointer mouse dengan TPF.
+
+
+TODO LIST:
+1. ambil data hari saat ini (Monday, Tuesday, dan seterusnya).
+2. load letter yang sesuai (letaknya di folder models/letter_a.glb)
+3. posisi object letter di random dari array position (tidak boleh ada yang kembar):
+positions = [
+ {x: 10, y: 1, z: -250 },
+ {x: -100, y: 3, z: -150 },
+ {x: 100, y: 5, z: -50 },
+ {x: 200, y: 7, z: -200 },
+ {x: 250, y: 1, z: -100 },
+ {x: -200, y: 3, z: -50 },
+ {x: -100, y: 5, z: 10 },
+ {x: 300, y: 7, z: -10 },
+ {x: -300, y: 1, z: -100 },
+]
+(lakukan console.log() untuk position yang terpilih)
+4. load object car
+5. ketika player intersect dengan car dan user menekan tombol E, gantikan player yang awalnya berupa object character menjadi object car, tetap bisa gerak WASD dan pointer mouse (posisi ketinggian kamera tetap, speed nya bertambah 2x lipat).
+6. ketika player menekan tombol F, gantikan object car menjadi object character lagi.
+7. load beberapa object poop di sekitar player secara random.
+8. jika player intersect dengan poop, kurangi lives sebanyak 1.
+9. jika lives = 0, game over.
+10. munculkan button restart.
+
+KETERANGAN:
+Selalu tulis ulang seluruh script yang berubah, jangan hanya berupa potongan code nya saja.

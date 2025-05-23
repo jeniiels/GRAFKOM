@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TPV Game Project</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #instructions-tpv, #player-coordinates { /* Gabungkan style jika mirip */
+            position: absolute;
+            color: white;
+            background-color: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Arial', sans-serif;
+            font-size: 14px;
+            z-index: 100;
+        }
+        #instructions-tpv {
+            bottom: 10px;
+            left: 10px;
+        }
+        /* Style baru untuk koordinat pemain */
+        #player-coordinates {
+            top: 10px; /* Atur posisi sesuai keinginan */
+            left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions-tpv">
+        WASD: Gerakkan Karakter. Mouse: Orbit Kamera. Shift: Lari (jika diimplementasikan).
+    </div>
+    <!-- Elemen baru untuk menampilkan koordinat -->
+    <div id="player-coordinates">
+        Posisi Pemain: X: 0.00, Z: 0.00
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
