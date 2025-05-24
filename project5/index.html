@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TPV Game Project</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        .game-ui { /* Style umum untuk elemen UI game */
+            position: absolute;
+            color: white;
+            background-color: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Arial', sans-serif;
+            font-size: 14px;
+            z-index: 100;
+        }
+        #instructions-tpv {
+            bottom: 10px;
+            left: 10px;
+        }
+        #player-coordinates {
+            top: 10px;
+            left: 10px;
+        }
+        /* Style baru untuk nyawa */
+        #player-lives {
+            top: 10px;
+            right: 10px; /* Posisikan di kanan atas */
+        }
+        /* Style untuk popup Game Over */
+        #game-over-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 30px;
+            background-color: rgba(200, 0, 0, 0.85);
+            color: white;
+            border: 3px solid darkred;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 24px;
+            z-index: 200; /* Di atas elemen UI lain */
+            display: none; /* Awalnya tersembunyi */
+        }
+        #game-over-popup h2 {
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions-tpv" class="game-ui">
+        WASD: Gerakkan Karakter. E: Masuk Mobil. F: Keluar Mobil.
+    </div>
+    <div id="player-coordinates" class="game-ui">
+        Posisi: X: 0.0, Z: 0.0
+    </div>
+    <!-- Elemen baru untuk nyawa -->
+    <div id="player-lives" class="game-ui">
+        Nyawa: 5
+    </div>
+
+    <!-- Popup Game Over -->
+    <div id="game-over-popup">
+        <h2>GAME OVER</h2>
+        <p>Nyawa Anda habis!</p>
+        <!-- Tombol Restart akan ditambahkan di TODO berikutnya -->
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
