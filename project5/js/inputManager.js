@@ -7,6 +7,8 @@ export class InputManager {
             ShiftLeft: false,
             KeyE: false,
             KeyF: false,
+            KeyG: false,
+            KeyC: false,
         };
         this.mouse = {
             x: 0, y: 0,

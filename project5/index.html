@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TPV Game Project</title>
+    <title>Letters of The Day</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
-        .game-ui { /* Style umum untuk elemen UI game */
+        .game-ui {
             position: absolute;
             color: white;
             background-color: rgba(0,0,0,0.7);
@@ -16,58 +16,155 @@
             font-family: 'Arial', sans-serif;
             font-size: 14px;
             z-index: 100;
+            margin: 15px;
         }
-        #instructions-tpv {
-            bottom: 10px;
+        #instructions-tpv { bottom: 10px; left: 10px; }
+        #player-coordinates { top: 10px; left: 10px; }
+        #player-lives { top: 10px; right: 10px; }
+
+        /* Style untuk daftar huruf */
+        #letters-info {
+            top: 55px; /* Di bawah koordinat pemain */
             left: 10px;
+            max-height: 200px; /* Batasi tinggi agar tidak terlalu panjang */
+            overflow-y: auto; /* Tambahkan scroll jika daftar panjang */
         }
-        #player-coordinates {
-            top: 10px;
-            left: 10px;
+        #letters-info ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
         }
-        /* Style baru untuk nyawa */
-        #player-lives {
-            top: 10px;
-            right: 10px; /* Posisikan di kanan atas */
+        #letters-info li {
+            margin-bottom: 3px;
         }
-        /* Style untuk popup Game Over */
-        #game-over-popup {
+
+        #game-over-popup, #you-win-popup { /* Gabungkan style popup */
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             padding: 30px;
-            background-color: rgba(200, 0, 0, 0.85);
             color: white;
-            border: 3px solid darkred;
             border-radius: 10px;
             text-align: center;
             font-size: 24px;
-            z-index: 200; /* Di atas elemen UI lain */
-            display: none; /* Awalnya tersembunyi */
+            z-index: 200;
+            display: none; 
         }
-        #game-over-popup h2 {
-            margin-top: 0;
+        #game-over-popup {
+            background-color: rgba(150, 0, 0, 0.9);
+            border: 3px solid darkred;
+        }
+        #you-win-popup {
+            background-color: rgba(0, 100, 0, 0.9); /* Hijau untuk menang */
+            border: 3px solid darkgreen;
+        }
+        #game-over-popup h2, #you-win-popup h2 { margin-top: 0; }
+        
+        #restart-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: darkgreen;
+            color: white;
+            border: 2px solid green;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #restart-button:hover {
+            background-color: green;
+        }
+
+        /* Loading Screen Overlay */
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            color: white;
+            display: flex; /* Untuk memusatkan konten */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999; /* Di atas segalanya */
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+        }
+        #loading-overlay h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+        #loading-overlay p {
+            font-size: 16px;
+            line-height: 1.6;
+            max-width: 600px;
+            margin-bottom: 15px;
+        }
+        #loading-progress-bar-container {
+            width: 80%;
+            max-width: 400px;
+            background-color: #555;
+            border-radius: 5px;
+            padding: 3px;
+            margin-top: 20px;
+        }
+        #loading-progress-bar {
+            width: 0%; /* Awalnya 0% */
+            height: 20px;
+            background-color: #4CAF50;
+            border-radius: 3px;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            transition: width 0.3s ease-out; /* Animasi progress bar */
         }
     </style>
 </head>
 <body>
+    <!-- Loading Screen -->
+    <div id="loading-overlay">
+        <h1>Letters of the Day</h1>
+        <p><strong>Tujuan:</strong> Kumpulkan semua huruf nama hari ini yang tersebar di peta. Setelah semua huruf terkumpul, kamu akan mendapatkan tanaman. Tanam tanaman tersebut untuk menang!</p>
+        <p><strong>Cara Bermain:</strong>
+            <br>W, A, S, D: Bergerak
+            <br>Mouse: Mengarahkan pandangan
+            <br>E: Masuk/Keluar Mobil (dekat mobil)
+            <br>F: Keluar Mobil (jika di dalam)
+        </p>
+        <p>Hindari kotoran (poop) agar nyawamu tidak berkurang!</p>
+        <div id="loading-progress-bar-container">
+            <div id="loading-progress-bar">0%</div>
+        </div>
+        <p id="loading-status" style="margin-top: 10px;">Memuat aset...</p>
+    </div>
+
     <div id="instructions-tpv" class="game-ui">
-        WASD: Gerakkan Karakter. E: Masuk Mobil. F: Keluar Mobil.
+        WASD: Gerak. E: Masuk Mobil. F: Keluar Mobil. Shift: Lari.
     </div>
     <div id="player-coordinates" class="game-ui">
         Posisi: X: 0.0, Z: 0.0
     </div>
-    <!-- Elemen baru untuk nyawa -->
+    <div id="letters-info" class="game-ui">
+        <strong>Huruf Tersisa:</strong>
+        <ul id="letters-list">
+        </ul>
+    </div>
     <div id="player-lives" class="game-ui">
         Nyawa: 5
     </div>
 
-    <!-- Popup Game Over -->
     <div id="game-over-popup">
         <h2>GAME OVER</h2>
         <p>Nyawa Anda habis!</p>
-        <!-- Tombol Restart akan ditambahkan di TODO berikutnya -->
+        <!-- <button id="restart-button">Restart Game</button> -->
+    </div>
+    <div id="you-win-popup">
+        <h2>YOU WIN!</h2>
+        <p>Tanaman berhasil ditanam!</p>
+        <!-- <button id="restart-button" class="win-restart">Restart Game</button>  -->
+        <!-- Bisa pakai class beda jika mau style beda, atau ID unik -->
     </div>
 
     <canvas id="game-canvas"></canvas>

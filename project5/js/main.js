@@ -16,31 +16,48 @@ const PLAYER_MODEL_PATH = './assets/models/character.fbx';
 const CAR_MODEL_PATH = './assets/models/car.glb';
 const HDR_ENV_PATH = './assets/hdri/sky.hdr';
 const LETTER_MODEL_BASE_PATH = './assets/models/letter_';
-const POOP_MODEL_PATH = './assets/models/poop.glb'; // Ganti jika perlu
+const POOP_MODEL_PATH = './assets/models/poop.glb';
+const PLANT_MODEL_PATH = './assets/models/flower.glb';
 
 // --- Konfigurasi Game ---
 const INITIAL_LIVES = 5;
 let lives = INITIAL_LIVES;
-let isGameOver = false; // Flag global untuk game over
+let isGameOver = false;
 const lettersToCollectForDay = [];
 const letterObjectsInScene = [];
-const poopObjectsInScene = []; // Array untuk menyimpan objek poop
+const poopObjectsInScene = [];
+let plantObject = null;
+let canPlant = false;
+let isLoadingPlant = false;
+
+// Konfigurasi Tanaman
+const PLANT_SCALE_VALUE = 0.01; // Sesuaikan skala tanaman
+const PLANT_Y_WHEN_HELD = 1.5; // Ketinggian Y tanaman saat dipegang/di samping pemain (relatif ke pemain)
+const PLANT_SIDE_OFFSET = 0.8; // Jarak ke samping kanan pemain saat dipegang
+const PLANT_Y_WHEN_PLANTED = -2; // Ketinggian Y absolut saat ditanam
+const PLANT_FORWARD_OFFSET_ON_PLANT = 0.8; // Sedikit ke depan pemain saat ditanam
 
 // Konfigurasi Poop
-const MAX_POOPS = 50; // Jumlah maksimum poop di map
-const POOP_SCALE_VALUE = 0.005; // Sesuaikan skala poop
-const POOP_Y_OFFSET_FROM_GROUND = POOP_SCALE_VALUE / 2; // Jika pivot di tengah
+const MAX_POOPS = 1000;
+const POOP_SCALE_VALUE = 0.005;
+const POOP_Y_OFFSET_FROM_GROUND = POOP_SCALE_VALUE / 2 - 0.3; // Jika pivot di tengah
 const POOP_SPAWN_RADIUS_MIN = 10; // Jarak minimum spawn poop dari pemain
 const POOP_SPAWN_RADIUS_MAX = 40; // Jarak maksimum spawn poop dari pemain
-const POOP_SPAWN_INTERVAL = 1000; // Interval spawn poop dalam ms (misal, 5 detik)
+const POOP_SPAWN_INTERVAL = 5000; // Interval spawn poop dalam ms (misal, 5 detik)
 let lastPoopSpawnTime = 0;
 
-// ... (baseLetterSpawnPoints, LETTER_SCALE_VALUE, dll tetap sama) ...
-const baseLetterSpawnPoints = [
+let baseLetterSpawnPoints = [
     { x: 150, z: -150 }, { x: -50, z: -50 }, { x: 100, z: -150 },
     { x: 75, z: -240 }, { x: 230, z: -110 }, { x: -57, z: -202 },
     { x: -135, z: -40 }, { x: 165, z: -56 }, { x: -15, z: -35 },
 ];
+
+let baseLetterSpawnPointsOriginal = [
+    { x: 150, z: -150 }, { x: -50, z: -50 }, { x: 100, z: -150 },
+    { x: 75, z: -240 }, { x: 230, z: -110 }, { x: -57, z: -202 },
+    { x: -135, z: -40 }, { x: 165, z: -56 }, { x: -15, z: -35 },
+];
+
 const LETTER_SCALE_VALUE = 2;
 const LETTER_Y_OFFSET_FROM_GROUND = LETTER_SCALE_VALUE / 2;
 const RAYCAST_START_Y_FOR_ITEMS = 50;
@@ -50,20 +67,61 @@ const CAR_SCALE = { x: 0.5, y: 0.5, z: 0.5 };
 const DISTANCE_TO_ENTER_CAR = 5;
 const PLAYER_EXIT_CAR_OFFSET_RIGHT = 2.5;
 const PLAYER_EXIT_CAR_OFFSET_UP = 0.5;
+const PLAYER_INITIAL_POSITION = { x: 150, y: 0, z: -165 };
 
 let playerCharacterObject, carObject;
 let isPlayerInCar = false;
 let playerController;
 let inputManager;
+let scene, camera, renderer, tpvCameraControls, gameMapModel;
+const clock = new THREE.Clock();
+const generalRaycaster = new THREE.Raycaster();
 
 // --- Elemen UI ---
-let playerCoordinatesDisplay, playerLivesDisplay, gameOverPopup;
+let playerCoordinatesDisplay, playerLivesDisplay, gameOverPopup, youWinPopup, restartButton;
+let lettersListElement;
+let loadingOverlay, loadingProgressBar, loadingStatusText;
+
+// --- Loading Manager ---
+const loadingManager = new THREE.LoadingManager();
+let totalAssetsToLoad = 0; // Akan dihitung
+let assetsLoaded = 0;
+
+loadingManager.onStart = function (url, itemsLoaded, itemsTotal) {
+    // console.log('Mulai memuat: ' + url + '.\nMemuat ' + itemsLoaded + ' dari ' + itemsTotal + ' file.');
+    // totalAssetsToLoad akan dihitung secara manual untuk GLB/FBX/HDR
+};
+loadingManager.onLoad = function () {
+    // console.log('Semua aset bawaan Three.js selesai dimuat!');
+    // Ini mungkin terpanggil sebelum semua aset kustom kita selesai
+};
+loadingManager.onProgress = function (url, itemsLoaded, itemsTotal) {
+    // console.log('Memuat file: ' + url + '.\nMemuat ' + itemsLoaded + ' dari ' + itemsTotal + ' file.');
+    // Tidak ideal untuk progress bar utama kita karena itemsTotal bisa berubah
+};
+loadingManager.onError = function (url) {
+    console.error('Terjadi error saat memuat ' + url);
+};
+
+function updateLoadingProgress(statusMessage = "Memuat...") {
+    assetsLoaded++;
+    const progress = totalAssetsToLoad > 0 ? Math.round((assetsLoaded / totalAssetsToLoad) * 100) : 0;
+    if (loadingProgressBar) {
+        loadingProgressBar.style.width = progress + '%';
+        loadingProgressBar.textContent = progress + '%';
+    }
+    if (loadingStatusText) {
+        loadingStatusText.textContent = statusMessage;
+    }
+    // console.log(`Progress: ${progress}% (${assetsLoaded}/${totalAssetsToLoad}) - ${statusMessage}`);
+}
 
 function getCurrentDayName() { /* ... kode sama ... */
     const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const today = new Date().getDay();
     return days[today];
 }
+
 function getRandomBaseSpawnPoint(spawnPointsArray) { /* ... kode sama ... */
     if (!spawnPointsArray || spawnPointsArray.length === 0) {
         return { x: Math.random() * 200 - 100, z: Math.random() * 200 - 100 };
@@ -73,154 +131,143 @@ function getRandomBaseSpawnPoint(spawnPointsArray) { /* ... kode sama ... */
 }
 
 function updateLivesDisplay() {
-    if (playerLivesDisplay) {
-        playerLivesDisplay.textContent = `Nyawa: ${lives}`;
-    }
+    if (playerLivesDisplay) playerLivesDisplay.textContent = `Nyawa: ${lives}`;
 }
 
 function showGameOverPopup() {
-    if (gameOverPopup) {
-        gameOverPopup.style.display = 'block';
+    if (gameOverPopup) gameOverPopup.style.display = 'block';
+}
+
+function hideGameOverPopup() {
+    if (gameOverPopup) gameOverPopup.style.display = 'none';
+}
+
+function showYouWinPopup() {
+    if (youWinPopup) youWinPopup.style.display = 'block';
+}
+
+function hideYouWinPopup() {
+    if (youWinPopup) youWinPopup.style.display = 'none';
+}
+
+
+function updateLettersInfoDisplay() {
+    if (!lettersListElement) return;
+
+    lettersListElement.innerHTML = ''; // Kosongkan daftar sebelumnya
+
+    if (letterObjectsInScene.length === 0 && lettersToCollectForDay.length > 0) {
+        // Ini bisa terjadi jika huruf belum dimuat tapi kita sudah tahu targetnya
+        lettersToCollectForDay.forEach(char => {
+            const listItem = document.createElement('li');
+            listItem.textContent = `Huruf ${char}: (memuat...)`;
+            lettersListElement.appendChild(listItem);
+        });
+        return;
+    }
+    
+    if (letterObjectsInScene.length === 0 && lettersToCollectForDay.length === 0) {
+        lettersListElement.innerHTML = '<li>Semua huruf terkumpul!</li>';
+        return;
+    }
+
+
+    // Tampilkan huruf yang masih ada di scene (belum dikoleksi)
+    letterObjectsInScene.forEach(letterObj => {
+        if (letterObj && letterObj.parent) { // Pastikan masih di scene
+            const letterNameParts = letterObj.name.split('_');
+            const char = letterNameParts.length > 1 ? letterNameParts[1].toUpperCase() : '?';
+            
+            const listItem = document.createElement('li');
+            listItem.textContent = `Huruf ${char}: X: ${letterObj.position.x.toFixed(0)}, Z: ${letterObj.position.z.toFixed(0)}`;
+            lettersListElement.appendChild(listItem);
+        }
+    });
+
+    if (lettersListElement.children.length === 0 && lettersToCollectForDay.length > 0) {
+         lettersListElement.innerHTML = '<li>Memuat huruf...</li>'; // Jika belum ada objek tapi ada target
     }
 }
 
 function handleLetterCollected(collectedChar, collectedLetterObject) {
     if (isGameOver) return;
     console.log(`Main.js: Huruf '${collectedChar}' telah dikoleksi.`);
-    // ... (sisa logika sama) ...
+
     const indexToRemove = lettersToCollectForDay.indexOf(collectedChar);
     if (indexToRemove > -1) {
         lettersToCollectForDay.splice(indexToRemove, 1);
-        // console.log(`Main.js: Sisa huruf yang perlu dikumpulkan: [${lettersToCollectForDay.join(', ')}]`);
     }
+
+    // Hapus dari letterObjectsInScene agar tidak ditampilkan lagi di UI
     const objIndexInMainList = letterObjectsInScene.indexOf(collectedLetterObject);
     if (objIndexInMainList > -1) {
         letterObjectsInScene.splice(objIndexInMainList, 1);
     }
-    if (lettersToCollectForDay.length === 0) {
+
+    updateLettersInfoDisplay(); // UPDATE UI SETELAH HURUF DIAMBIL
+
+    if (lettersToCollectForDay.length === 0 && !plantObject && !canPlant && !isLoadingPlant) {
         console.log("🎉 Selamat! Semua huruf telah dikumpulkan!");
-        alert("Kamu menang! Semua huruf terkumpul.");
-        // TODO: Implementasi tanam plant dan menang
+        canPlant = true;
+        alert("Semua huruf terkumpul! Kamu mendapatkan benih tanaman. Tekan G untuk menanam.");
     }
 }
 
 function handlePoopHit(poopObject) {
     if (isGameOver) return;
-
-    console.log(`Main.js: Terkena Poop! Nyawa berkurang.`);
     lives--;
     updateLivesDisplay();
-
-    // Hapus referensi poop dari array global di main.js
     const index = poopObjectsInScene.indexOf(poopObject);
-    if (index > -1) {
-        poopObjectsInScene.splice(index, 1);
-    }
+    if (index > -1) poopObjectsInScene.splice(index, 1);
 
     if (lives <= 0) {
         isGameOver = true;
-        console.log("GAME OVER - Nyawa habis!");
         showGameOverPopup();
-        if (playerController) {
-            playerController.setGameOver(); // Beritahu PlayerController
-        }
-        // Tambahan: Hentikan input atau sembunyikan UI lain jika perlu
-        if (inputManager) inputManager.disable(); // Matikan input agar tidak bisa gerak lagi
+        if (playerController) playerController.setGameOver();
+        if (inputManager) inputManager.disable();
     }
 }
 
-async function spawnPoop(scene, mapModel, generalRaycaster, currentPC) { // Tambahkan currentPC
-    console.log("Attempting to spawn poop. Current poop count:", poopObjectsInScene.length, "Max poops:", MAX_POOPS);
-
-    // Gunakan currentPC yang dilewatkan sebagai argumen
-    if (isGameOver || poopObjectsInScene.length >= MAX_POOPS || !currentPC || !currentPC.model) {
-        console.log("Spawn poop dibatalkan karena kondisi awal:", {
-            isGameOver,
-            poopCount: poopObjectsInScene.length,
-            maxPoops: MAX_POOPS,
-            playerControllerExists: !!currentPC, // Cek argumen
-            playerModelExists: !!(currentPC && currentPC.model) // Cek argumen
-        });
-        return;
-    }
-
-    const currentPlayerModel = currentPC.model; // Gunakan dari argumen
+async function spawnPoop(currentPC) { // scene, mapModel, generalRaycaster sekarang global
+    if (isGameOver || poopObjectsInScene.length >= MAX_POOPS || !currentPC || !currentPC.model) return;
+    const currentPlayerModel = currentPC.model;
     const angle = Math.random() * Math.PI * 2;
     const radius = POOP_SPAWN_RADIUS_MIN + Math.random() * (POOP_SPAWN_RADIUS_MAX - POOP_SPAWN_RADIUS_MIN);
     const spawnX = currentPlayerModel.position.x + radius * Math.cos(angle);
     const spawnZ = currentPlayerModel.position.z + radius * Math.sin(angle);
-
-    // console.log(`Calculating spawn position: X=${spawnX.toFixed(1)}, Z=${spawnZ.toFixed(1)} around player at X=${currentPlayerModel.position.x.toFixed(1)}, Z=${currentPlayerModel.position.z.toFixed(1)}`);
-
     const rayOrigin = new THREE.Vector3(spawnX, RAYCAST_START_Y_FOR_ITEMS, spawnZ);
     generalRaycaster.set(rayOrigin, new THREE.Vector3(0, -1, 0));
     generalRaycaster.far = RAYCAST_START_Y_FOR_ITEMS + 20;
-    const intersects = generalRaycaster.intersectObject(mapModel, true);
-
+    const intersects = generalRaycaster.intersectObject(gameMapModel, true);
     let finalPoopY = POOP_Y_OFFSET_FROM_GROUND;
-    if (intersects.length > 0) {
-        finalPoopY = intersects[0].point.y + POOP_Y_OFFSET_FROM_GROUND;
-        // console.log(`Ground found for poop at Y=${intersects[0].point.y.toFixed(1)}. Final Poop Y=${finalPoopY.toFixed(1)}`);
-    } else {
-        console.warn(`Tidak ada tanah ditemukan untuk spawn poop di X:${spawnX.toFixed(1)}, Z:${spawnZ.toFixed(1)}. Mungkin di luar map.`);
-        return;
-    }
+    if (intersects.length > 0) finalPoopY = intersects[0].point.y + POOP_Y_OFFSET_FROM_GROUND;
+    else return; // Tidak spawn jika tidak ada tanah
 
-    // console.log(`Attempting to load poop model: ${POOP_MODEL_PATH}`);
     try {
         const poopModel = await loadGLB(scene, POOP_MODEL_PATH, {
             position: { x: spawnX, y: finalPoopY, z: spawnZ },
             scale: { x: POOP_SCALE_VALUE, y: POOP_SCALE_VALUE, z: POOP_SCALE_VALUE },
             name: `poop_${Date.now()}`
         });
-        console.log("Poop baru dispawn:", poopModel.name, "Total poop:", poopObjectsInScene.length + 1);
-        
         poopObjectsInScene.push(poopModel);
-        if (currentPC) { // Gunakan argumen currentPC
-            currentPC.poopObjects.push(poopModel);
-        }
-    } catch (error) {
-        console.error("Gagal memuat model poop:", error);
-    }
+        if (currentPC) currentPC.poopObjects.push(poopModel);
+    } catch (error) { console.error("Gagal memuat model poop:", error); }
 }
 
-async function init() {
-    const canvas = document.getElementById('game-canvas');
-    playerCoordinatesDisplay = document.getElementById('player-coordinates'); // Ambil referensi UI
-    playerLivesDisplay = document.getElementById('player-lives');
-    gameOverPopup = document.getElementById('game-over-popup');
+async function setupLetters() {
+    // Hapus huruf lama dari scene dan array
+    letterObjectsInScene.forEach(letter => { if(letter.parent) letter.removeFromParent(); });
+    letterObjectsInScene.length = 0;
+    lettersToCollectForDay.length = 0;
 
-    if (!canvas || !playerCoordinatesDisplay || !playerLivesDisplay || !gameOverPopup) {
-        console.error("Salah satu elemen UI penting tidak ditemukan. Cek HTML.");
-        return;
-    }
-    updateLivesDisplay(); // Tampilkan nyawa awal
-
-    const scene = createScene();
-    const camera = createCamera();
-    const renderer = createRenderer(canvas);
-    await loadEnvironment(scene, renderer, HDR_ENV_PATH).catch(() => scene.background = new THREE.Color(0x333333));
-    setupLights(scene);
-
-    const inputManager = new InputManager(canvas); // Deklarasikan inputManager di sini
-    inputManager.enable();
-
-    let playerController, tpvCameraControls, gameMapModel; // Deklarasikan playerController di sini
-    const clock = new THREE.Clock();
-    const generalRaycaster = new THREE.Raycaster();
-
-    try {
-        gameMapModel = await loadGLB(scene, MAP_MODEL_PATH, { name: "gameMap" });
-    } catch (error) { console.error("Gagal memuat map:", error); return; }
-
-    // --- Load Huruf ---
-    // ... (kode load huruf sama seperti sebelumnya) ...
     const currentDay = getCurrentDayName();
     const uniqueDayLetters = [...new Set(currentDay.toUpperCase().split(''))];
     lettersToCollectForDay.push(...uniqueDayLetters);
-    // console.log("Main.js: Daftar target huruf yang harus dikumpulkan (unik):", lettersToCollectForDay);
+    baseLetterSpawnPoints = [...baseLetterSpawnPointsOriginal]; // Reset array posisi
     let remainingBaseSpawnPoints = [...baseLetterSpawnPoints];
-    letterObjectsInScene.length = 0;
+
+    updateLettersInfoDisplay(); 
+
     for (const letterChar of uniqueDayLetters) {
         const letterModelPath = `${LETTER_MODEL_BASE_PATH}${letterChar.toLowerCase()}.glb`;
         if (remainingBaseSpawnPoints.length === 0) {
@@ -240,7 +287,7 @@ async function init() {
             console.warn(`Tidak ada tanah ditemukan di bawah X:${baseSpawnPoint.x}, Z:${baseSpawnPoint.z} untuk huruf ${letterChar}. Menggunakan Y fallback: ${finalLetterY}`);
         }
         const finalLetterPosition = { x: baseSpawnPoint.x, y: finalLetterY, z: baseSpawnPoint.z };
-        // console.log(`Main.js: Memuat huruf: ${letterChar} di posisi:`, finalLetterPosition);
+        console.log(`Main.js: Memuat huruf: ${letterChar} di posisi:`, finalLetterPosition);
         try {
             const letterModel = await loadGLB(scene, letterModelPath, {
                 position: finalLetterPosition,
@@ -248,67 +295,213 @@ async function init() {
                 name: `letter_${letterChar}`
             });
             letterObjectsInScene.push(letterModel);
+            updateLettersInfoDisplay();
         } catch (error) { console.error(`Gagal memuat model untuk huruf ${letterChar} dari path ${letterModelPath}:`, error); }
     }
-    // console.log("Main.js: Objek huruf yang dimuat di scene:", letterObjectsInScene.map(obj => obj.name));
 
+    updateLettersInfoDisplay();
+}
 
+async function resetGame() {
+    console.log("Mereset game...");
+    hideGameOverPopup();
+    hideYouWinPopup();
+    isGameOver = false;
+    isLoadingPlant = false;
+    lives = INITIAL_LIVES;
+    updateLivesDisplay();
+
+    if (plantObject && plantObject.parent) {
+        plantObject.removeFromParent();
+    }
+    plantObject = null;
+    canPlant = false;
+
+    // Reset posisi pemain
+    if (playerCharacterObject && playerController) {
+        playerCharacterObject.position.set(PLAYER_INITIAL_POSITION.x, PLAYER_INITIAL_POSITION.y, PLAYER_INITIAL_POSITION.z);
+        playerCharacterObject.rotation.set(0,0,0); // Reset rotasi juga
+        playerCharacterObject.visible = true;
+        playerController.setControlledObject(playerCharacterObject, false); // Pastikan kontrol ke karakter
+        playerController.isGameOver = false; // Reset flag game over di controller
+        playerController.velocity.set(0,0,0); // Reset velocity
+        if (playerController.currentAction) playerController.playAnimationByName('idle'); // Mainkan idle
+    }
+    if (tpvCameraControls && playerCharacterObject) {
+        tpvCameraControls.setTargetToFollow(playerCharacterObject, false); // Kamera ikuti karakter
+        tpvCameraControls.update(0); // Update posisi kamera
+    }
+
+    // Reset mobil
+    if (carObject) {
+        const carRayOrigin = new THREE.Vector3(CAR_SPAWN_POSITION.x, RAYCAST_START_Y_FOR_ITEMS, CAR_SPAWN_POSITION.z);
+        generalRaycaster.set(carRayOrigin, new THREE.Vector3(0, -1, 0));
+        const carGroundIntersects = generalRaycaster.intersectObject(gameMapModel, true);
+        const carFinalY = carGroundIntersects.length > 0 ? carGroundIntersects[0].point.y + (CAR_SCALE.y * 0.2) : 0.5;
+        carObject.position.set(CAR_SPAWN_POSITION.x, carFinalY, CAR_SPAWN_POSITION.z);
+        carObject.rotation.set(0,0,0);
+        carObject.visible = true;
+    }
+    isPlayerInCar = false;
+
+    // Hapus semua poop
+    poopObjectsInScene.forEach(poop => { if(poop.parent) poop.removeFromParent(); });
+    poopObjectsInScene.length = 0;
+    if (playerController) playerController.poopObjects.length = 0; // Kosongkan juga di controller
+
+    // Reset dan tampilkan kembali letters (tanpa loading progress update untuk restart cepat)
+    assetsLoaded = 0; // Reset counter aset jika setupLetters melakukan load ulang
+    totalAssetsToLoad = [...new Set(getCurrentDayName().toUpperCase().split(''))].length; // Hanya hitung huruf untuk loading
+    await setupLetters(); // Muat ulang 
+    updateLettersInfoDisplay();
+
+    lastPoopSpawnTime = clock.getElapsedTime() * 1000;
+
+    if (inputManager) inputManager.enable(); // Aktifkan kembali input
+    console.log("Game telah direset.");
+}
+
+function triggerWinCondition() {
+    if (isGameOver) return; // Jangan lakukan apa-apa jika sudah game over/menang
+
+    console.log("CHEAT ACTIVATED: Player wins!");
+
+    // Kosongkan daftar huruf yang perlu dikoleksi (seolah-olah semua sudah diambil)
+    lettersToCollectForDay.length = 0;
+    // Hapus semua model huruf dari scene dan arraynya untuk konsistensi UI
+    letterObjectsInScene.forEach(letter => { if(letter.parent) letter.removeFromParent(); });
+    letterObjectsInScene.length = 0;
+    updateLettersInfoDisplay(); // Update UI huruf
+
+    // Langsung set canPlant true agar tanaman muncul
+    canPlant = true;
+    // Tanaman akan otomatis muncul dan bisa ditanam via tombol G seperti biasa
+    // Jika Anda ingin tanaman langsung tertanam:
+    // 1. Panggil fungsi untuk memuat plant jika belum ada
+    // 2. Panggil fungsi untuk menanam plant tersebut (mirip logika tombol G)
+    // Tapi untuk testing, membiarkan pemain menekan G setelah cheat mungkin lebih baik
+    // agar alur normal setelah dapat plant bisa diuji.
+    
+    // Anda bisa juga langsung memicu popup menang di sini jika tidak mau melalui penanaman
+    // showYouWinPopup();
+    // isGameOver = true;
+    // if (playerController) playerController.setGameOver();
+    // if (inputManager) inputManager.disable();
+    // Namun, lebih baik biarkan pemain menanamnya untuk menguji logika itu.
+    alert("CHEAT: Kamu mendapatkan benih tanaman! Tekan G untuk menanam.");
+}
+
+async function init() {
+    const canvas = document.getElementById('game-canvas');
+    playerCoordinatesDisplay = document.getElementById('player-coordinates');
+    playerLivesDisplay = document.getElementById('player-lives');
+    gameOverPopup = document.getElementById('game-over-popup');
+    youWinPopup = document.getElementById('you-win-popup');
+    // restartButton = document.getElementById('restart-button');
+    loadingOverlay = document.getElementById('loading-overlay');
+    loadingProgressBar = document.getElementById('loading-progress-bar');
+    loadingStatusText = document.getElementById('loading-status');
+    lettersListElement = document.getElementById('letters-list');
+
+    if (!canvas || !loadingOverlay ) { /* ... Cek elemen lain ... */
+        console.error("Elemen UI penting tidak ditemukan!"); return;
+    }
+    updateLivesDisplay();
+    // restartButton.addEventListener('click', resetGame);
+    updateLettersInfoDisplay();
+
+    // Hitung total aset utama yang akan di-load untuk progress bar
+    totalAssetsToLoad = 0;
+    totalAssetsToLoad++; // Map
+    totalAssetsToLoad++; // Player
+    totalAssetsToLoad++; // Car
+    totalAssetsToLoad++; // HDR
+    totalAssetsToLoad += [...new Set(getCurrentDayName().toUpperCase().split(''))].length; // Huruf unik
+    // Poop di-load on-demand, jadi tidak masuk hitungan awal ini
+
+    assetsLoaded = 0;
+    updateLoadingProgress("Memulai...");
+
+    scene = createScene();
+    camera = createCamera();
+    renderer = createRenderer(canvas);
+
+    try {
+        await loadEnvironment(scene, renderer, HDR_ENV_PATH);
+        updateLoadingProgress("Langit dimuat...");
+    } catch (e) { console.warn("HDR Gagal"); updateLoadingProgress("HDR Gagal"); }
+    
+    setupLights(scene);
+
+    inputManager = new InputManager(canvas);
+    inputManager.enable(); // Enable di sini, mungkin di-disable saat game over
+
+    try {
+        gameMapModel = await loadGLB(scene, MAP_MODEL_PATH, { name: "gameMap" });
+        updateLoadingProgress("Peta dimuat...");
+    } catch (error) { console.error("Gagal memuat map:", error); return; }
+
+    // --- Load Huruf ---
+    await setupLetters(); // Panggil fungsi setupLetters yang sudah ada progress update-nya
+    updateLettersInfoDisplay();
+    
     // --- Load Mobil ---
-    // ... (kode load mobil sama seperti sebelumnya) ...
     try {
         const carRayOrigin = new THREE.Vector3(CAR_SPAWN_POSITION.x, RAYCAST_START_Y_FOR_ITEMS, CAR_SPAWN_POSITION.z);
         generalRaycaster.set(carRayOrigin, new THREE.Vector3(0, -1, 0));
-        generalRaycaster.far = RAYCAST_START_Y_FOR_ITEMS + 20;
         const carGroundIntersects = generalRaycaster.intersectObject(gameMapModel, true);
         const carFinalY = carGroundIntersects.length > 0 ? carGroundIntersects[0].point.y + (CAR_SCALE.y * 0.2) : 0.5;
         carObject = await loadGLB(scene, CAR_MODEL_PATH, {
             position: { x: CAR_SPAWN_POSITION.x, y: carFinalY, z: CAR_SPAWN_POSITION.z },
-            scale: CAR_SCALE,
-            name: "PlayerCar"
+            scale: CAR_SCALE, name: "PlayerCar"
         });
         carObject.visible = true;
-        // console.log("Mobil berhasil dimuat di:", carObject.position);
-    } catch (error) { console.error("Gagal memuat mobil:", error); }
-
+        updateLoadingProgress("Mobil dimuat...");
+    } catch (error) { console.error("Gagal memuat mobil:", error); updateLoadingProgress("Mobil gagal dimuat"); }
 
     // --- Load Player Character ---
     try {
-        const { model, mixer, animations } = await loadFBX(scene, PLAYER_MODEL_PATH, {
-            position: { x: 150, y: 0, z: -165 }, // Posisi awal Anda
-            scale: { x: 0.015, y: 0.015, z: 0.015 },
-            name: "PlayerCharacter"
-        });
-
+        const { model, mixer, animations } = await loadFBX(scene, PLAYER_MODEL_PATH, PLAYER_INITIAL_POSITION, { name: "PlayerCharacter" });
         playerCharacterObject = model;
+        playerCharacterObject.position.set(PLAYER_INITIAL_POSITION.x, PLAYER_INITIAL_POSITION.y, PLAYER_INITIAL_POSITION.z); // Set posisi awal
+        playerCharacterObject.scale.set(0.015, 0.015, 0.015); // Pastikan skala dari kode Anda
         playerCharacterObject.visible = true;
 
-        playerController = new PlayerController( // Inisialisasi playerController
+        playerController = new PlayerController(
             playerCharacterObject, mixer, animations, inputManager, camera, gameMapModel,
             letterObjectsInScene, handleLetterCollected,
-            poopObjectsInScene, handlePoopHit // Teruskan poopObjects dan callback
+            poopObjectsInScene, handlePoopHit
         );
-
         tpvCameraControls = new TPVCameraControls(camera, playerCharacterObject, canvas, inputManager);
         tpvCameraControls.update(0);
+        updateLoadingProgress("Pemain siap!");
 
-    } catch (error) { console.error("Gagal memuat karakter pemain:", error); return; }
+    } catch (error) { console.error("Gagal memuat karakter pemain:", error); updateLoadingProgress("Karakter gagal"); return; }
 
-    // Spawn poop awal (jika diinginkan, bisa juga menunggu interval pertama)
-    for (let i = 0; i < MAX_POOPS / 2; i++) { // Spawn setengah dari maks poop di awal
-        await spawnPoop(scene, gameMapModel, generalRaycaster, playerController);
-    }
-    lastPoopSpawnTime = clock.getElapsedTime() * 1000; // Set waktu spawn terakhir
+    // Sembunyikan loading screen setelah semua aset utama dimuat
+    // Beri sedikit delay agar progress 100% terlihat
+    setTimeout(() => {
+        if (loadingOverlay) loadingOverlay.style.display = 'none';
+    }, 500);
 
-    window.addEventListener('resize', () => { /* ... kode sama ... */
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
 
+    // // Spawn poop awal
+    // if (playerController) { // Pastikan playerController sudah ada
+    //     for (let i = 0; i < MAX_POOPS / 10; i++) {
+    //         await spawnPoop(playerController); // Hanya perlu playerController
+    //     }
+    // }
+    lastPoopSpawnTime = clock.getElapsedTime() * 1000;
+
+    window.addEventListener('resize', () => { /* ... */ });
     function animate() {
         requestAnimationFrame(animate);
         const deltaTime = clock.getDelta();
         const elapsedTime = clock.getElapsedTime() * 1000; // Waktu dalam ms
+
+        if (inputManager && inputManager.isKeyPressedOnce('KeyC')) {
+            triggerWinCondition();
+        }
 
         if (!isGameOver) { // Hanya update game jika tidak game over
             // --- Logika Masuk/Keluar Mobil ---
@@ -350,12 +543,90 @@ async function init() {
                 }
             }
 
-
             if (playerController) playerController.update(deltaTime);
+
+            // --- Logika Tanaman ---
+            if (canPlant && playerController && playerController.model) {
+                const currentControlledModel = playerController.model; // Bisa karakter atau mobil
+
+                if (!plantObject && !isLoadingPlant) {
+                    isLoadingPlant = true; // Jika bisa menanam dan objek tanaman belum ada, buat dan tampilkan
+                    (async () => { // Gunakan IIFE async untuk loadGLB
+                        try {
+                            console.log("Mencoba memuat model tanaman...");
+                            plantObject = await loadGLB(scene, PLANT_MODEL_PATH, {
+                                scale: { x: PLANT_SCALE_VALUE, y: PLANT_SCALE_VALUE, z: PLANT_SCALE_VALUE },
+                                name: "PlayerPlant"
+                            });
+                            console.log("Model tanaman berhasil dimuat.");
+                            // Posisi awal tanaman akan diupdate terus menerus di bawah
+                        } catch (e) {
+                            console.error("Gagal memuat model tanaman:", e);
+                            canPlant = false; // Gagal load, batalkan kemampuan menanam
+                        }
+                    })();
+                }
+
+                if (plantObject && plantObject.parent !== scene) { // Jika sudah di-load tapi belum di-add ke scene
+                    scene.add(plantObject);
+                }
+                
+                // Update posisi tanaman agar selalu di samping kanan model yang dikontrol (pemain/mobil)
+                // sebelum ditanam
+                if (plantObject && plantObject.parent === scene && !plantObject.userData.isPlanted) {
+                    const playerRight = new THREE.Vector3();
+                    currentControlledModel.getWorldDirection(playerRight); // Arah depan model
+                    playerRight.cross(currentControlledModel.up);       // Arah kanan model
+                    playerRight.normalize();
+
+                    const plantPosition = currentControlledModel.position.clone()
+                        .add(playerRight.multiplyScalar(PLANT_SIDE_OFFSET));
+                    
+                    // Sesuaikan Y tanaman agar setinggi pemain/mobil saat dipegang
+                    // Ini bisa lebih rumit jika pemain/mobil memiliki ketinggian pivot yang berbeda
+                    // Untuk sederhana, kita set Y relatif terhadap Y pemain/mobil
+                    plantPosition.y = currentControlledModel.position.y + PLANT_Y_WHEN_HELD;
+                    
+                    plantObject.position.copy(plantPosition);
+                    // Arahkan tanaman sama seperti pemain/mobil (opsional)
+                    plantObject.quaternion.copy(currentControlledModel.quaternion);
+                }
+
+
+                // Ketika pemain menekan G untuk MENANAM
+                if (inputManager.isKeyPressedOnce('KeyG') && plantObject && plantObject.parent === scene && !plantObject.userData.isPlanted) {
+                    console.log("Menanam tanaman!");
+                    
+                    const plantTargetPosition = new THREE.Vector3();
+                    const playerForward = new THREE.Vector3();
+                    currentControlledModel.getWorldDirection(playerForward); // Arah depan model
+
+                    // Posisikan tanaman agak ke kanan dan depan dari model saat ini
+                    const playerRightForPlanting = new THREE.Vector3().crossVectors(currentControlledModel.up, playerForward).normalize();
+
+                    plantTargetPosition.copy(currentControlledModel.position)
+                        .add(playerForward.multiplyScalar(PLANT_FORWARD_OFFSET_ON_PLANT))
+                        .add(playerRightForPlanting.multiplyScalar(PLANT_SIDE_OFFSET * 0.5)); // Sedikit ke kanan
+                    
+                    plantTargetPosition.y = PLANT_Y_WHEN_PLANTED; // Y absolut saat ditanam
+
+                    plantObject.position.copy(plantTargetPosition);
+                    // Mungkin reset rotasi tanaman saat diletakkan di tanah
+                    plantObject.rotation.set(0, Math.random() * Math.PI * 2, 0); // Rotasi Y acak
+                    
+                    plantObject.userData.isPlanted = true; // Tandai sudah ditanam
+                    canPlant = false; // Tidak bisa menanam lagi
+
+                    showYouWinPopup();
+                    isGameOver = true; // Akhiri permainan (menang)
+                    if (playerController) playerController.setGameOver(); // Beritahu controller
+                    if (inputManager) inputManager.disable(); // Matikan input
+                }
+            }
 
             // Spawn Poop Berkala
             if (elapsedTime - lastPoopSpawnTime > POOP_SPAWN_INTERVAL) {
-                spawnPoop(scene, gameMapModel, generalRaycaster, playerController);
+                spawnPoop(playerController);
                 lastPoopSpawnTime = elapsedTime;
             }
         } // akhir dari if (!isGameOver)
@@ -376,4 +647,7 @@ async function init() {
     animate();
 }
 
-init().catch(err => console.error("Initialization failed:", err));
+init().catch(err => {
+    console.error("Initialization failed:", err);
+    if(loadingStatusText) loadingStatusText.textContent = "Gagal memulai game!";
+});

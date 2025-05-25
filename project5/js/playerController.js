@@ -26,7 +26,7 @@ export class PlayerController {
         this.currentMoveSpeed = this.baseCharacterMoveSpeed;
 
         this.characterRotationSpeedFactor = 10.0;
-        this.carRotationSpeedFactor = 6.0;
+        this.carRotationSpeedFactor = 3.0;
         this.currentRotationSpeedFactor = this.characterRotationSpeedFactor;
 
         this.currentAction = null;
@@ -44,7 +44,7 @@ export class PlayerController {
         this.groundCheckDistance = 3.0;
 
         this.collectionDistance = 6; // Sesuai kode Anda sebelumnya
-        this.poopInteractionDistance = 2.0; // Jarak untuk "menginjak" poop, sesuaikan
+        this.poopInteractionDistance = 2.3; // Jarak untuk "menginjak" poop, sesuaikan
         this.isControllingCar = false;
         this.isGameOver = false; // Flag untuk game over
 
@@ -145,8 +145,8 @@ export class PlayerController {
             if (keys.KeyW) forwardAmount = 1;
             if (keys.KeyS) forwardAmount = -1;
             let turnAmount = 0;
-            if (keys.KeyA) turnAmount = 1;
-            if (keys.KeyD) turnAmount = -1;
+            if (keys.KeyA) turnAmount = -1;
+            if (keys.KeyD) turnAmount = 1;
 
             if (forwardAmount !== 0) {
                 isMoving = true;
@@ -200,27 +200,93 @@ export class PlayerController {
         
 
         // --- DETEKSI POOP (untuk karakter DAN mobil) ---
+        // if (this.poopObjects && Array.isArray(this.poopObjects)) {
+        //     const currentModelWorldPosition = new THREE.Vector3();
+        //     this.model.getWorldPosition(currentModelWorldPosition);
+
+        //     for (let i = this.poopObjects.length - 1; i >= 0; i--) {
+        //         const poopObj = this.poopObjects[i];
+        //         if (poopObj && poopObj.parent) { // Pastikan objek poop masih ada di scene
+        //             const poopWorldPosition = new THREE.Vector3();
+        //             poopObj.getWorldPosition(poopWorldPosition);
+
+        //             const distanceToPoop = currentModelWorldPosition.distanceTo(poopWorldPosition);
+
+        //             if (distanceToPoop < this.poopInteractionDistance) {
+        //                 console.log(`PlayerController: Terkena poop: ${poopObj.name} pada jarak ${distanceToPoop.toFixed(4)}`);
+        //                 poopObj.removeFromParent(); // Hapus dari scene
+        //                 this.poopObjects.splice(i, 1); // Hapus dari array internal PlayerController
+        //                 this.onPoopHitCallback(poopObj); // Panggil callback ke main.js
+        //                 break; // Hanya satu poop per frame untuk menghindari multiple hits
+        //             }
+        //         } else {
+        //             this.poopObjects.splice(i, 1); // Bersihkan jika sudah tidak valid
+        //         }
+        //     }
+        // }
+
         if (this.poopObjects && Array.isArray(this.poopObjects)) {
-            const currentModelWorldPosition = new THREE.Vector3();
-            this.model.getWorldPosition(currentModelWorldPosition);
+            // Dapatkan bounding sphere untuk model yang dikontrol (pemain/mobil)
+            // Penting: Bounding sphere ada di 'geometry'. Model GLB/FBX adalah Group,
+            // jadi kita perlu mencari mesh utama atau menggabungkannya.
+            // Untuk pendekatan sederhana, kita bisa coba buat sphere manual di sekitar model.
+            
+            const controlledModel = this.model; // Pemain atau mobil
+            let controlledModelSphere;
+
+            // Cara 1: Buat sphere manual di sekitar model (lebih kontrol)
+            const controlledModelCenter = new THREE.Vector3();
+            controlledModel.getWorldPosition(controlledModelCenter);
+            // Radius sphere pemain/mobil perlu disesuaikan dengan ukuran visualnya
+            // Misal, jika lebar pemain/mobil sekitar 0.015 (dari skala), radiusnya bisa 0.0075 atau sedikit lebih besar
+            let controlledModelRadius = 0.01; // SESUAIKAN INI!
+            if (this.isControllingCar) {
+                controlledModelRadius = 0.02; // Mobil mungkin lebih besar, SESUAIKAN!
+            }
+            controlledModelSphere = new THREE.Sphere(controlledModelCenter, controlledModelRadius);
+
+
+            // Cara 2: Coba dapatkan dari geometri (lebih kompleks jika model adalah Group)
+            // controlledModel.traverse((child) => {
+            //     if (child.isMesh && !controlledModelSphere) { // Ambil mesh pertama
+            //         if (!child.geometry.boundingSphere) {
+            //             child.geometry.computeBoundingSphere();
+            //         }
+            //         if (child.geometry.boundingSphere) {
+            //             controlledModelSphere = child.geometry.boundingSphere.clone();
+            //             controlledModelSphere.applyMatrix4(child.matrixWorld); // Transform ke world space
+            //         }
+            //     }
+            // });
+            // if (!controlledModelSphere) {
+            //     // Fallback ke cara 1 jika tidak ditemukan mesh dengan bounding sphere
+            //     const tempCenter = new THREE.Vector3();
+            //     controlledModel.getWorldPosition(tempCenter);
+            //     controlledModelSphere = new THREE.Sphere(tempCenter, 0.01); // Fallback radius
+            // }
+
 
             for (let i = this.poopObjects.length - 1; i >= 0; i--) {
                 const poopObj = this.poopObjects[i];
-                if (poopObj && poopObj.parent) { // Pastikan objek poop masih ada di scene
-                    const poopWorldPosition = new THREE.Vector3();
-                    poopObj.getWorldPosition(poopWorldPosition);
+                if (poopObj && poopObj.parent) {
+                    let poopSphere;
 
-                    const distanceToPoop = currentModelWorldPosition.distanceTo(poopWorldPosition);
+                    // Cara 1: Buat sphere manual di sekitar poop
+                    const poopCenter = new THREE.Vector3();
+                    poopObj.getWorldPosition(poopCenter);
+                    // Radius poop, misal setengah dari skala Y poop (0.005 / 2 = 0.0025) atau sedikit lebih besar
+                    const poopRadius = 3 * 0.75; // 0.75x skala. SESUAIKAN INI!
+                    poopSphere = new THREE.Sphere(poopCenter, poopRadius);
 
-                    if (distanceToPoop < this.poopInteractionDistance) {
-                        console.log(`PlayerController: Terkena poop: ${poopObj.name}`);
-                        poopObj.removeFromParent(); // Hapus dari scene
-                        this.poopObjects.splice(i, 1); // Hapus dari array internal PlayerController
-                        this.onPoopHitCallback(poopObj); // Panggil callback ke main.js
-                        break; // Hanya satu poop per frame untuk menghindari multiple hits
+                    if (controlledModelSphere && poopSphere && controlledModelSphere.intersectsSphere(poopSphere)) {
+                        console.log(`PlayerController: Terkena poop (sphere): ${poopObj.name}`);
+                        poopObj.removeFromParent();
+                        this.poopObjects.splice(i, 1);
+                        this.onPoopHitCallback(poopObj);
+                        break;
                     }
                 } else {
-                    this.poopObjects.splice(i, 1); // Bersihkan jika sudah tidak valid
+                    this.poopObjects.splice(i, 1);
                 }
             }
         }
@@ -228,7 +294,6 @@ export class PlayerController {
 
         // Interaksi Huruf (hanya untuk karakter)
         if (!this.isControllingCar && this.collectibleLetters && Array.isArray(this.collectibleLetters)) {
-            /* ... kode interaksi huruf sama ... */
             const playerWorldPosition = new THREE.Vector3();
             this.model.getWorldPosition(playerWorldPosition);
             for (let i = this.collectibleLetters.length - 1; i >= 0; i--) {
