@@ -11,7 +11,7 @@ import { PlayerController } from './playerController.js';
 import { TPVCameraControls } from './cameraController.js';
 
 // --- Path Aset ---
-const MAP_MODEL_PATH = './assets/models/map.glb';
+const MAP_MODEL_PATH = 'https://pub-69a92bbd42af472b8cc96326af308944.r2.dev/map.glb';
 const PLAYER_MODEL_PATH = './assets/models/character.fbx';
 const CAR_MODEL_PATH = './assets/models/car.glb';
 const HDR_ENV_PATH = './assets/hdri/sky.hdr';
