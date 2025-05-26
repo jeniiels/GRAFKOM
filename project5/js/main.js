@@ -12,12 +12,12 @@ import { TPVCameraControls } from './cameraController.js';
 
 // --- Path Aset ---
 const MAP_MODEL_PATH = 'https://pub-69a92bbd42af472b8cc96326af308944.r2.dev/map.glb';
-const PLAYER_MODEL_PATH = './assets/models/character.fbx';
-const CAR_MODEL_PATH = './assets/models/car.glb';
+const PLAYER_MODEL_PATH = 'https://pub-69a92bbd42af472b8cc96326af308944.r2.dev/character.fbx';
+const CAR_MODEL_PATH = 'https://pub-69a92bbd42af472b8cc96326af308944.r2.dev/car.glb';
 const HDR_ENV_PATH = './assets/hdri/sky.hdr';
-const LETTER_MODEL_BASE_PATH = './assets/models/letter_';
-const POOP_MODEL_PATH = './assets/models/poop.glb';
-const PLANT_MODEL_PATH = './assets/models/flower.glb';
+const LETTER_MODEL_BASE_PATH = 'https://pub-69a92bbd42af472b8cc96326af308944.r2.dev/letter_';
+const POOP_MODEL_PATH = 'https://pub-69a92bbd42af472b8cc96326af308944.r2.dev/poop.glb';
+const PLANT_MODEL_PATH = 'https://pub-69a92bbd42af472b8cc96326af308944.r2.dev/flower.glb';
 
 // --- Konfigurasi Game ---
 const INITIAL_LIVES = 5;
